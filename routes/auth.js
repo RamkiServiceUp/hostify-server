@@ -25,6 +25,9 @@ router.post(
   async (req, res, next) => {
     try {
       const { name, phone, email, password, userType } = req.body;
+      if (!phone) {
+        return res.status(400).json({ message: 'Phone number is required.' });
+      }
       if (await User.findOne({ email })) {
         return res.status(409).json({ message: 'Email already registered' });
       }
@@ -34,6 +37,12 @@ router.post(
       const user = await User.create({ name, phone, email, password, role: userType });
       res.status(201).json({ message: 'User registered', user: { id: user._id, name: user.name, phone: user.phone, email: user.email, userType: user.role } });
     } catch (err) {
+      if (err.code === 11000 && err.keyPattern && err.keyPattern.phone) {
+        return res.status(409).json({ message: 'Phone already registered' });
+      }
+      if (err.code === 11000 && err.keyPattern && err.keyPattern.email) {
+        return res.status(409).json({ message: 'Email already registered' });
+      }
       next(err);
     }
   }

@@ -18,6 +18,7 @@ var enrollRouter = require('./routes/enroll');
 var publicRoomsRouter = require('./routes/publicRooms');
 var paymentsRouter = require('./routes/payments');
 var roomsRouter = require('./routes/rooms');
+var userDashboardRouter = require('./routes/userDashboard');
 
 var app = express();
 
@@ -43,6 +44,8 @@ app.use('/api/enroll', enrollRouter);
 app.use('/api/public', publicRoomsRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/rooms', roomsRouter);
+
+app.use('/api/user', userDashboardRouter);
 
 // MongoDB connection with Mongoose
 const mongoUri = process.env.MONGO_URI;
