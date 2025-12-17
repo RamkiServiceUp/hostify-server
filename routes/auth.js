@@ -1,4 +1,5 @@
 
+
 const express = require('express');
 
 
@@ -10,6 +11,49 @@ const validate = require('../middleware/validate');
 const config = require('../config/default');
 
 const router = express.Router();
+
+
+// POST /api/auth/refresh-if-needed
+router.post('/refresh-if-needed', async (req, res, next) => {
+  try {
+    const { accessToken } = req.body;
+    if (!accessToken) return res.status(400).json({ message: 'No access token provided' });
+    let payload;
+    try {
+      payload = require('jsonwebtoken').decode(accessToken);
+    } catch {
+      return res.status(400).json({ message: 'Invalid access token' });
+    }
+    if (!payload || !payload.exp) return res.status(400).json({ message: 'Invalid access token' });
+    const now = Math.floor(Date.now() / 1000);
+    const timeLeft = payload.exp - now;
+    if (timeLeft >= 120) {
+      // Not about to expire, return same token
+      return res.json({ accessToken });
+    }
+    // Try to refresh using refresh token from cookie
+    const { refreshToken } = req.cookies;
+    if (!refreshToken) return res.status(401).json({ message: 'No refresh token' });
+    let refreshPayload;
+    try {
+      refreshPayload = jwtUtil.verifyRefreshToken(refreshToken);
+    } catch {
+      return res.status(403).json({ message: 'Invalid refresh token' });
+    }
+    const newAccessToken = jwtUtil.signAccessToken({ id: refreshPayload.id, email: refreshPayload.email, role: refreshPayload.role });
+    const csrfToken = csrfUtil.generateCsrfToken();
+    res.cookie('csrfToken', csrfToken, {
+      httpOnly: false,
+      secure: config.nodeEnv === 'production',
+      sameSite: 'strict',
+      maxAge: 15 * 60 * 1000,
+      domain: config.cookieDomain,
+    });
+    res.json({ accessToken: newAccessToken, csrfToken });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // POST /api/auth/register
 router.post(
@@ -82,7 +126,17 @@ router.post(
         maxAge: 15 * 60 * 1000,
         domain: config.cookieDomain,
       });
-      res.json({ accessToken, csrfToken });
+      res.json({
+        accessToken,
+        csrfToken,
+        user: {
+          id: user._id,
+          name: user.name,
+          phone: user.phone,
+          email: user.email,
+          userType: user.role
+        }
+      });
     } catch (err) {
       next(err);
     }
@@ -123,7 +177,8 @@ router.post('/logout', (req, res) => {
 });
 
 // GET /api/auth/me
-router.get('/me', async (req, res, next) => {
+const tokenRefreshIfNeeded = require('../middleware/tokenRefreshIfNeeded');
+router.get('/me', tokenRefreshIfNeeded, async (req, res, next) => {
   try {
     const authHeader = req.headers['authorization'];
     if (!authHeader) return res.status(401).json({ message: 'No token' });
@@ -136,6 +191,11 @@ router.get('/me', async (req, res, next) => {
     }
     const user = await User.findById(payload.id).select('-password');
     if (!user) return res.status(404).json({ message: 'User not found' });
+    // If a new access token was issued, include it in the response header
+    if (req.newAccessToken) {
+      res.set('x-access-token', req.newAccessToken);
+      res.set('x-csrf-token', req.newCsrfToken);
+    }
     res.json({ user });
   } catch (err) {
     next(err);
