@@ -10,20 +10,10 @@ const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
 const validate = require('../middleware/validate');
 const Room = require('../models/Room');
-
+const Enrollment = require('../models/Enrollment');
+const User = require('../models/User');
 const router = express.Router();
-// In-memory category list (replace with DB in production)
-let categories = [
-  'Technology',
-  'Yoga Trainer',
-  'Music',
-  'Art',
-  'Cooking',
-  'Business',
-  'Fitness',
-  'Language',
-  'Other'
-];
+
 // GET /api/rooms/categories - fetch all categories
 router.get('/categories', (req, res) => {
   res.json({ categories });
@@ -40,28 +30,7 @@ router.post('/categories', auth, authorize('host'), [body('category').isString()
 });
 
 
-// GET /api/rooms
-router.get('/', async (req, res, next) => {
-  try {
-    const rooms = await Room.find().sort({ startTime: 1 });
-    res.json({ rooms });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// GET /api/rooms/:id
-router.get('/:id', [param('id').isMongoId()], validate, async (req, res, next) => {
-  try {
-    const room = await Room.findById(req.params.id);
-    if (!room) return res.status(404).json({ message: 'Room not found' });
-    res.json({ room });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// POST /api/rooms (host only)
+// POST /api/rooms - create a new room (host only, with banner upload)
 router.post(
   '/',
   auth,
@@ -70,18 +39,45 @@ router.post(
   [
     body('title').isString().isLength({ min: 2, max: 200 }),
     body('description').optional().isString().isLength({ max: 2000 }),
-    body('price').isNumeric().custom((v) => v >= 99),
-    body('startTime').isISO8601(),
-    body('endTime').isISO8601(),
-    body('roomDuration').isInt({ min: 1 }),
-    body('seatsAvailable').isInt({ min: 1 }),
-    body('status').optional().isIn(['upcoming', 'live', 'ended']),
-    body('categories').optional().isString().isLength({ min: 2, max: 50 })
+    body('category').optional().isString().isLength({ min: 2, max: 50 }),
+    body('categories').optional().isString().isLength({ min: 2, max: 50 }),
+    body('price').optional().isNumeric(),
+    body('pricePerSeat').optional().isNumeric(),
+    body('seatsAvailable').optional().customSanitizer(v => typeof v === 'string' ? parseInt(v, 10) : v).isInt({ min: 1 }),
+    body('totalSeats').optional().customSanitizer(v => typeof v === 'string' ? parseInt(v, 10) : v).isInt({ min: 1 }),
+    body('startTime').optional().isISO8601(),
+    body('endTime').optional().isISO8601(),
+    body('startDateTime').optional().isISO8601(),
+    body('endDateTime').optional().isISO8601(),
+    body('roomDuration').customSanitizer(v => {
+      if (typeof v === 'string') v = parseFloat(v);
+      if (typeof v === 'number' && !Number.isInteger(v)) v = Math.ceil(v);
+      return v;
+    }).isInt({ min: 1 }),
+    body('status').optional().isIn(['upcoming', 'live', 'ended'])
   ],
   validate,
   async (req, res, next) => {
     try {
-      const { title, description, price, startTime, endTime, roomDuration, seatsAvailable, status, category } = req.body;
+      // Accept both category and categories (string or array)
+      let categories = req.body.categories || req.body.category;
+      if (categories && typeof categories === 'string') {
+        categories = [categories];
+      }
+      // Accept both price and pricePerSeat
+      let price = req.body.price !== undefined ? Number(req.body.price) : (req.body.pricePerSeat !== undefined ? Number(req.body.pricePerSeat) : undefined);
+      // Accept both seatsAvailable and totalSeats
+      let seatsAvailable = req.body.seatsAvailable !== undefined ? Number(req.body.seatsAvailable) : (req.body.totalSeats !== undefined ? Number(req.body.totalSeats) : undefined);
+      // Accept both startTime and startDateTime
+      let startTime = req.body.startTime || req.body.startDateTime;
+      // Accept both endTime and endDateTime
+      let endTime = req.body.endTime || req.body.endDateTime;
+      // Accept roomDuration
+      let roomDuration = req.body.roomDuration !== undefined ? Number(req.body.roomDuration) : undefined;
+      const { title, description, status } = req.body;
+      if (!title || !price || !startTime || !endTime || !seatsAvailable || !roomDuration) {
+        return res.status(422).json({ message: 'Missing required fields' });
+      }
       if (new Date(endTime) <= new Date(startTime)) {
         return res.status(422).json({ message: 'endTime must be after startTime' });
       }
@@ -112,57 +108,203 @@ router.post(
   }
 );
 
-// PUT /api/rooms/:id (host only, must own)
-router.put(
-  '/:id',
-  auth,
-  authorize('host'),
-  upload.single('banner'),
-  validate,
-  async (req, res, next) => {
-    try {
-      const room = await Room.findById(req.params.id);
-      console.log('PUT /api/rooms/:id req.body:', req.body);
-      if (!room) return res.status(404).json({ message: 'Room not found' });
-      if (String(room.hostId) !== req.user.id) {
-        return res.status(403).json({ message: 'Forbidden: not your room' });
-      }
-      if (req.body.startTime && req.body.endTime && new Date(req.body.endTime) <= new Date(req.body.startTime)) {
-        return res.status(422).json({ message: 'endTime must be after startTime' });
-      }
-      if (req.body.price !== undefined && req.body.price < 99) {
-        return res.status(422).json({ message: 'Minimum price is ₹99' });
-      }
-      // Ensure seatsAvailable is a number if present
-      if (req.body.seatsAvailable !== undefined) {
-        room.seatsAvailable = Number(req.body.seatsAvailable);
-      }
-      // Update banner if file is present
-      if (req.file) {
-        room.banner = req.file.buffer;
-      }
-      Object.assign(room, req.body);
-      await room.save();
-      res.json({ room });
-    } catch (err) {
-      next(err);
-    }
-  }
-);
 
-// DELETE /api/rooms/:id (host only, must own)
-router.delete('/:id', auth, authorize('host'), [param('id').isMongoId()], validate, async (req, res, next) => {
+// GET /api/rooms/not-enrolled - get all rooms where the current user is NOT enrolled
+router.get('/not-enrolled',auth, authorize('user'), auth, async (req, res, next) => {
   try {
-    const room = await Room.findById(req.params.id);
-    if (!room) return res.status(404).json({ message: 'Room not found' });
-    if (String(room.hostId) !== req.user.id) {
-      return res.status(403).json({ message: 'Forbidden: not your room' });
-    }
-    await room.deleteOne();
-    res.status(204).send();
+    // Find all roomIds where the user is enrolled
+    const enrolled = await Enrollment.find({ userId: req.user.id }).select('roomId');
+    const enrolledRoomIds = enrolled.map(e => e.roomId);
+    // Find rooms where status is not 'ended' or 'live' and user is NOT enrolled
+    const roomsRaw = await Room.find({
+      status: { $nin: ['ended', 'live'] },
+      _id: { $nin: enrolledRoomIds }
+    })
+      .sort({ startTime: 1 })
+      .populate({
+        path: 'hostId',
+        select: 'name email phone role',
+        model: 'User'
+      });
+    const rooms = await Promise.all(roomsRaw.map(async room => {
+      const r = room.toObject();
+      const host = r.hostId;
+      const enrollments = await Enrollment.find({ roomId: r._id });
+      const userIds = enrollments.map(e => e.userId);
+      const users = await User.find({ _id: { $in: userIds } }, 'name email phone');
+      return {
+        ...r,
+        hostId: host?._id || r.hostId,
+        host: host ? {
+          _id: host._id,
+          name: host.name,
+          email: host.email,
+        } : null,
+        enrolledUsers: users.map(user => user ? {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone
+        } : null)
+      };
+    }));
+    res.json({ rooms });
   } catch (err) {
     next(err);
   }
 });
+
+
+// GET /api/rooms/active - get all rooms where status is not 'ended'
+router.get('/active', async (req, res, next) => {
+  try {
+    const roomsRaw = await Room.find({ status: { $nin: ['ended', 'live'] } })
+      .sort({ startTime: 1 })
+      .populate({
+        path: 'hostId',
+        select: 'name email phone role',
+        model: 'User'
+      });
+    const rooms = await Promise.all(roomsRaw.map(async room => {
+      const r = room.toObject();
+      const host = r.hostId;
+      const enrollments = await Enrollment.find({ roomId: r._id });
+      const userIds = enrollments.map(e => e.userId);
+      const users = await User.find({ _id: { $in: userIds } }, 'name email phone');
+      return {
+        ...r,
+        hostId: host?._id || r.hostId,
+        host: host ? {
+          _id: host._id,
+          name: host.name,
+          email: host.email,
+        } : null,
+        enrolledUsers: users.map(user => user ? {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone
+        } : null)
+      };
+    }));
+    res.json({ rooms });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/rooms/host/:hostId - get all rooms by a specific host
+router.get('/host/:hostId',auth,
+  authorize('host'), async (req, res, next) => {
+    try {
+      const { hostId } = req.params;
+      const roomsRaw = await Room.find({ hostId }).sort({ startTime: 1 })
+        .populate({
+          path: 'hostId',
+          select: 'name email phone role',
+          model: 'User'
+        });
+      const rooms = await Promise.all(roomsRaw.map(async room => {
+        const r = room.toObject();
+        const host = r.hostId;
+        const enrollments = await Enrollment.find({ roomId: r._id });
+        const userIds = enrollments.map(e => e.userId);
+        const users = await User.find({ _id: { $in: userIds } }, 'name email phone');
+        return {
+          ...r,
+          hostId: host?._id || r.hostId,
+          host: host ? {
+            _id: host._id,
+            name: host.name,
+            email: host.email,
+          } : null,
+          enrolledUsers: users.map(user => user ? {
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone
+          } : null)
+        };
+      }));
+      res.json({ rooms });
+    } catch (err) {
+      next(err);
+    }
+});
+
+// GET /api/rooms
+router.get('/',auth,
+  authorize('host'), async (req, res, next) => {
+    try {
+      const roomsRaw = await Room.find().sort({ startTime: 1 })
+        .populate({
+          path: 'hostId',
+          select: 'name email phone role',
+          model: 'User'
+        });
+      const rooms = await Promise.all(roomsRaw.map(async room => {
+        const r = room.toObject();
+        const host = r.hostId;
+        const enrollments = await Enrollment.find({ roomId: r._id });
+        const userIds = enrollments.map(e => e.userId);
+        const users = await User.find({ _id: { $in: userIds } }, 'name email phone');
+        return {
+          ...r,
+          hostId: host?._id || r.hostId,
+          host: host ? {
+            _id: host._id,
+            name: host.name,
+            email: host.email,
+          } : null,
+          enrolledUsers: users.map(user => user ? {
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone
+          } : null)
+        };
+      }));
+      res.json({ rooms });
+    } catch (err) {
+      next(err);
+    }
+});
+
+// GET /api/rooms/:id
+router.get('/:id', [param('id').isMongoId()], validate, async (req, res, next) => {
+    try {
+      const room = await Room.findById(req.params.id)
+        .populate({
+          path: 'hostId',
+          select: 'name email phone role',
+          model: 'User'
+        });
+      if (!room) return res.status(404).json({ message: 'Room not found' });
+      const r = room.toObject();
+      const host = r.hostId;
+      const enrollments = await Enrollment.find({ roomId: r._id });
+      const userIds = enrollments.map(e => e.userId);
+      const users = await User.find({ _id: { $in: userIds } }, 'name email phone');
+      res.json({
+        room: {
+          ...r,
+          hostId: host?._id || r.hostId,
+          host: host ? {
+            _id: host._id,
+            name: host.name,
+            email: host.email,
+          } : null,
+          enrolledUsers: users.map(user => user ? {
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone
+          } : null)
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+	});
 
 module.exports = router;

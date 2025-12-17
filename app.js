@@ -1,6 +1,9 @@
 // Start room status cron
 require('./utils/roomStatusCron');
 require('dotenv').config();
+// Start room status cron
+require('./utils/roomStatusCron');
+require('dotenv').config();
 var express = require('express');
 var cors = require('cors');
 const mongoose = require('mongoose');
@@ -14,7 +17,8 @@ var authRouter = require('./routes/auth');
 var googleRouter = require('./routes/google');
 var hostProfileRouter = require('./routes/hostProfile');
 var hostDashboardRouter = require('./routes/hostDashboard');
-var enrollRouter = require('./routes/enroll');
+// var enrollRouter = require('./routes/enroll');
+var enrollmentsRouter = require('./routes/enrollments');
 var publicRoomsRouter = require('./routes/publicRooms');
 var paymentsRouter = require('./routes/payments');
 var roomsRouter = require('./routes/rooms');
@@ -22,9 +26,9 @@ var userDashboardRouter = require('./routes/userDashboard');
 
 var app = express();
 
-// Enable CORS for frontend
+// Enable CORS for frontend (allow both Vite and React dev servers)
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: ['http://localhost:5173', 'http://localhost:3000'],
   credentials: true
 }));
 
@@ -40,7 +44,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/google', googleRouter);
 app.use('/api/host', hostProfileRouter);
 app.use('/api/host', hostDashboardRouter);
-app.use('/api/enroll', enrollRouter);
+// app.use('/api/enroll', enrollRouter);
+app.use('/api/enrollments', enrollmentsRouter);
 app.use('/api/public', publicRoomsRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/rooms', roomsRouter);
