@@ -23,7 +23,6 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true,
-    match: [/^\+?[0-9]{7,15}$/, 'Invalid phone number'],
     index: true,
   },
   password: {

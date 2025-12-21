@@ -23,6 +23,8 @@ var publicRoomsRouter = require('./routes/publicRooms');
 var paymentsRouter = require('./routes/payments');
 var roomsRouter = require('./routes/rooms');
 var userDashboardRouter = require('./routes/userDashboard');
+var agoraRouter = require('./routes/agora');
+var chatroomsRouter = require('./routes/chatrooms');
 
 var app = express();
 
@@ -49,6 +51,10 @@ app.use('/api/enrollments', enrollmentsRouter);
 app.use('/api/public', publicRoomsRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/rooms', roomsRouter);
+
+
+app.use('/api/agora', agoraRouter);
+app.use('/api/chatrooms', chatroomsRouter);
 
 app.use('/api/user', userDashboardRouter);
 

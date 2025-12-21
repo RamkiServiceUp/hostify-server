@@ -60,7 +60,7 @@ router.post(
   '/register',
   [
     body('name').isString().isLength({ min: 2, max: 100 }),
-    body('phone').isString().matches(/^\+?[0-9]{7,15}$/),
+      body('phone').isString(),
     body('email').isEmail().normalizeEmail(),
     body('password').isLength({ min: 8 }),
     body('userType').isIn(['host', 'user']),

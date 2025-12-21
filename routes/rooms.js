@@ -1,5 +1,6 @@
 
 const express = require('express');
+
 const { body, param } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
@@ -13,6 +14,44 @@ const Room = require('../models/Room');
 const Enrollment = require('../models/Enrollment');
 const User = require('../models/User');
 const router = express.Router();
+
+
+// PATCH /api/rooms/:id/end - Host ends session, sets status to 'ended'
+router.patch('/:id/end', auth, authorize('host'), async (req, res, next) => {
+  try {
+    const room = await Room.findById(req.params.id);
+    if (!room) return res.status(404).json({ message: 'Room not found' });
+    if (room.status === 'ended') return res.status(400).json({ message: 'Room is already ended' });
+    room.status = 'ended';
+    await room.save();
+    res.json({ room });
+  } catch (err) {
+    next(err);
+  }
+});
+// PATCH /api/rooms/:id/go-live - Host starts session, generates channelName and hostUid
+router.patch('/:id/go-live', async (req, res, next) => {
+  try {
+    const room = await Room.findById(req.params.id);
+    if (!room) return res.status(404).json({ message: 'Room not found' });
+    // Allow go-live if status is not 'live', or if status is 'live' but channelName or hostUid is missing
+    if (room.status === 'live' && room.channelName && room.hostUid) {
+      return res.status(400).json({ message: 'Room is already live' });
+    }
+    // Generate unique channel name and hostUid if missing
+    if (!room.channelName) {
+      room.channelName = `room_${room._id}`;
+    }
+    if (!room.hostUid) {
+      room.hostUid = Math.floor(Math.random() * 900000) + 100000; // 6-digit random
+    }
+    room.status = 'live';
+    await room.save();
+    res.json({ room });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // GET /api/rooms/categories - fetch all categories
 router.get('/categories', (req, res) => {

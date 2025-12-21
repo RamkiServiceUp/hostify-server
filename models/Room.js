@@ -58,6 +58,16 @@ const roomSchema = new mongoose.Schema({
     type: Buffer, // store image as binary (longblob)
     required: false,
   },
+  channelName: {
+    type: String,
+    required: false,
+    index: true,
+  },
+  hostUid: {
+    type: Number,
+    required: false,
+    index: true,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
