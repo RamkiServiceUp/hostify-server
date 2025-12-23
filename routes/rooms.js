@@ -1,349 +1,163 @@
-
 const express = require('express');
-
-const { body, param } = require('express-validator');
+const { body } = require('express-validator');
 const multer = require('multer');
-const path = require('path');
-// Multer setup for memory storage (for DB blob)
-const upload = multer({ storage: multer.memoryStorage() });
-
+const { Room, Session } = require('../models/Room');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
-const validate = require('../middleware/validate');
-const Room = require('../models/Room');
-const Enrollment = require('../models/Enrollment');
-const User = require('../models/User');
 const router = express.Router();
 
+// Multer setup for banner image upload
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
-// PATCH /api/rooms/:id/end - Host ends session, sets status to 'ended'
-router.patch('/:id/end', auth, authorize('host'), async (req, res, next) => {
+// GET /api/rooms/host/:hostId - get all rooms for a host
+router.get('/host/:hostId', auth, authorize('host'), async (req, res) => {
+	try {
+		const { hostId } = req.params;
+		const rooms = await Room.find({ hostId });
+		res.json({ rooms });
+	} catch (err) {
+		res.status(500).json({ message: err.message || 'Failed to fetch rooms' });
+	}
+});
+
+// POST /api/rooms - create a new room with sessions and banner (host only)
+const User = require('../models/User');
+router.post('/', auth, authorize('host'), upload.single('banner'), async (req, res) => {
+	try {
+		const { title, description, category, price, seatsAvailable, sessions, startDateTime, endDateTime, hostId } = req.body;
+		if (!title || !description || !price || !seatsAvailable || !req.file || !sessions || !hostId) {
+			return res.status(400).json({ message: 'Missing required fields' });
+		}
+		// Fetch hostName from User model
+		let hostName = '';
+		try {
+			const hostUser = await User.findById(hostId).select('name');
+			hostName = hostUser ? hostUser.name : '';
+		} catch {
+			hostName = '';
+		}
+		// Parse sessions JSON
+		let sessionArr = [];
+		try {
+			sessionArr = JSON.parse(sessions);
+		} catch {
+			return res.status(400).json({ message: 'Invalid sessions format' });
+		}
+		// Create Room (banner as Buffer for now)
+		const room = new Room({
+			title,
+			description,
+			category,
+			price,
+			seatsAvailable,
+			banner: req.file.buffer,
+			hostId,
+			hostName,
+			startDateTime,
+			endDateTime,
+			sessions: [],
+		});
+		await room.save();
+		// Create sessions and link to room
+		const sessionDocs = await Promise.all(sessionArr.map(async (s) => {
+			const session = new Session({
+				roomId: room._id,
+				title: room.title,
+				description: room.description,
+				startDateTime: new Date(`${s.date}T${s.startTime}`),
+				endDateTime: new Date(`${s.date}T${s.endTime}`),
+			});
+			await session.save();
+			return session._id;
+		}));
+		room.sessions = sessionDocs;
+		await room.save();
+		res.status(201).json({ room });
+	} catch (err) {
+		res.status(500).json({ message: err.message || 'Failed to create room' });
+	}
+});
+
+// GET /api/rooms/:roomId - get a room by its ID
+router.get('/:roomId', auth, async (req, res) => {
+       try {
+	       const room = await Room.findById(req.params.roomId)
+		       .populate({
+			       path: 'sessions',
+			       model: 'Session',
+			       populate: { path: 'attendees', model: 'User', select: 'name email' },
+		       });
+	       if (!room) return res.status(404).json({ message: 'Room not found' });
+	       res.json(room);
+       } catch (err) {
+	       res.status(500).json({ message: err.message || 'Failed to fetch room' });
+       }
+});
+
+
+// DELETE /api/rooms/:roomId - delete a room by its ID (host only)
+router.delete('/:roomId', auth, authorize('host'), async (req, res) => {
+	try {
+		const room = await Room.findByIdAndDelete(req.params.roomId);
+		if (!room) return res.status(404).json({ message: 'Room not found' });
+		// Optionally, delete associated sessions
+		await Session.deleteMany({ roomId: req.params.roomId });
+		res.json({ message: 'Room deleted successfully' });
+	} catch (err) {
+		res.status(500).json({ message: err.message || 'Failed to delete room' });
+	}
+});
+
+// GET /api/rooms/not-enrolled - get all rooms the current user is NOT enrolled in
+router.get('/not-enrolled', auth, async (req, res) => {
+	try {
+		const userId = req.user._id;
+		// Find rooms where enrolledUsers does NOT include the current user
+		const rooms = await Room.find({
+			$or: [
+				{ enrolledUsers: { $exists: false } },
+				{ enrolledUsers: { $ne: userId } }
+			]
+		});
+		res.json({ rooms });
+	} catch (err) {
+		res.status(500).json({ message: err.message || 'Failed to fetch not-enrolled rooms' });
+	}
+});
+
+// GET /api/rooms/active - get all active/live rooms (public)
+router.get('/active', async (req, res) => {
   try {
-    const room = await Room.findById(req.params.id);
-    if (!room) return res.status(404).json({ message: 'Room not found' });
-    if (room.status === 'ended') return res.status(400).json({ message: 'Room is already ended' });
-    room.status = 'ended';
-    await room.save();
-    res.json({ room });
-  } catch (err) {
-    next(err);
-  }
-});
-// PATCH /api/rooms/:id/go-live - Host starts session, generates channelName and hostUid
-router.patch('/:id/go-live', async (req, res, next) => {
-  try {
-    const room = await Room.findById(req.params.id);
-    if (!room) return res.status(404).json({ message: 'Room not found' });
-    // Allow go-live if status is not 'live', or if status is 'live' but channelName or hostUid is missing
-    if (room.status === 'live' && room.channelName && room.hostUid) {
-      return res.status(400).json({ message: 'Room is already live' });
-    }
-    // Generate unique channel name and hostUid if missing
-    if (!room.channelName) {
-      room.channelName = `room_${room._id}`;
-    }
-    if (!room.hostUid) {
-      room.hostUid = Math.floor(Math.random() * 900000) + 100000; // 6-digit random
-    }
-    room.status = 'live';
-    await room.save();
-    res.json({ room });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// GET /api/rooms/categories - fetch all categories
-router.get('/categories', (req, res) => {
-  res.json({ categories });
-});
-
-// POST /api/rooms/categories - add a new category
-router.post('/categories', auth, authorize('host'), [body('category').isString().isLength({ min: 2, max: 50 })], validate, (req, res) => {
-  const { category } = req.body;
-  if (categories.includes(category)) {
-    return res.status(409).json({ message: 'Category already exists' });
-  }
-  categories.push(category);
-  res.status(201).json({ category });
-});
-
-
-// POST /api/rooms - create a new room (host only, with banner upload)
-router.post(
-  '/',
-  auth,
-  authorize('host'),
-  upload.single('banner'),
-  [
-    body('title').isString().isLength({ min: 2, max: 200 }),
-    body('description').optional().isString().isLength({ max: 2000 }),
-    body('category').optional().isString().isLength({ min: 2, max: 50 }),
-    body('categories').optional().isString().isLength({ min: 2, max: 50 }),
-    body('price').optional().isNumeric(),
-    body('pricePerSeat').optional().isNumeric(),
-    body('seatsAvailable').optional().customSanitizer(v => typeof v === 'string' ? parseInt(v, 10) : v).isInt({ min: 1 }),
-    body('totalSeats').optional().customSanitizer(v => typeof v === 'string' ? parseInt(v, 10) : v).isInt({ min: 1 }),
-    body('startTime').optional().isISO8601(),
-    body('endTime').optional().isISO8601(),
-    body('startDateTime').optional().isISO8601(),
-    body('endDateTime').optional().isISO8601(),
-    body('roomDuration').customSanitizer(v => {
-      if (typeof v === 'string') v = parseFloat(v);
-      if (typeof v === 'number' && !Number.isInteger(v)) v = Math.ceil(v);
-      return v;
-    }).isInt({ min: 1 }),
-    body('status').optional().isIn(['upcoming', 'live', 'ended'])
-  ],
-  validate,
-  async (req, res, next) => {
-    try {
-      // Accept both category and categories (string or array)
-      let categories = req.body.categories || req.body.category;
-      if (categories && typeof categories === 'string') {
-        categories = [categories];
-      }
-      // Accept both price and pricePerSeat
-      let price = req.body.price !== undefined ? Number(req.body.price) : (req.body.pricePerSeat !== undefined ? Number(req.body.pricePerSeat) : undefined);
-      // Accept both seatsAvailable and totalSeats
-      let seatsAvailable = req.body.seatsAvailable !== undefined ? Number(req.body.seatsAvailable) : (req.body.totalSeats !== undefined ? Number(req.body.totalSeats) : undefined);
-      // Accept both startTime and startDateTime
-      let startTime = req.body.startTime || req.body.startDateTime;
-      // Accept both endTime and endDateTime
-      let endTime = req.body.endTime || req.body.endDateTime;
-      // Accept roomDuration
-      let roomDuration = req.body.roomDuration !== undefined ? Number(req.body.roomDuration) : undefined;
-      const { title, description, status } = req.body;
-      if (!title || !price || !startTime || !endTime || !seatsAvailable || !roomDuration) {
-        return res.status(422).json({ message: 'Missing required fields' });
-      }
-      if (new Date(endTime) <= new Date(startTime)) {
-        return res.status(422).json({ message: 'endTime must be after startTime' });
-      }
-      if (price < 99) {
-        return res.status(422).json({ message: 'Minimum price is ₹99' });
-      }
-      let bannerBuffer = undefined;
-      if (req.file) {
-        bannerBuffer = req.file.buffer;
-      }
-      const room = await Room.create({
-        title,
-        description,
-        hostId: req.user.id,
-        price,
-        startTime,
-        endTime,
-        roomDuration,
-        seatsAvailable,
-        banner: bannerBuffer,
-        status: status || 'upcoming',
-        categories: categories || ['Other'],
-      });
-      res.status(201).json({ room });
-    } catch (err) {
-      next(err);
-    }
-  }
-);
-
-
-// GET /api/rooms/not-enrolled - get all rooms where the current user is NOT enrolled
-router.get('/not-enrolled',auth, authorize('user'), auth, async (req, res, next) => {
-  try {
-    // Find all roomIds where the user is enrolled
-    const enrolled = await Enrollment.find({ userId: req.user.id }).select('roomId');
-    const enrolledRoomIds = enrolled.map(e => e.roomId);
-    // Find rooms where status is not 'ended' or 'live' and user is NOT enrolled
-    const roomsRaw = await Room.find({
-      status: { $nin: ['ended', 'live'] },
-      _id: { $nin: enrolledRoomIds }
-    })
-      .sort({ startTime: 1 })
-      .populate({
-        path: 'hostId',
-        select: 'name email phone role',
-        model: 'User'
-      });
-    const rooms = await Promise.all(roomsRaw.map(async room => {
-      const r = room.toObject();
-      const host = r.hostId;
-      const enrollments = await Enrollment.find({ roomId: r._id });
-      const userIds = enrollments.map(e => e.userId);
-      const users = await User.find({ _id: { $in: userIds } }, 'name email phone');
-      return {
-        ...r,
-        hostId: host?._id || r.hostId,
-        host: host ? {
-          _id: host._id,
-          name: host.name,
-          email: host.email,
-        } : null,
-        enrolledUsers: users.map(user => user ? {
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone
-        } : null)
-      };
-    }));
+    // Find rooms with status 'live' or 'active'
+    const rooms = await Room.find({ status: { $in: ['live', 'active'] } });
     res.json({ rooms });
   } catch (err) {
-    next(err);
+    res.status(500).json({ message: err.message || 'Failed to fetch active rooms' });
   }
 });
 
-
-// GET /api/rooms/active - get all rooms where status is not 'ended'
-router.get('/active', async (req, res, next) => {
-  try {
-    const roomsRaw = await Room.find({ status: { $nin: ['ended', 'live'] } })
-      .sort({ startTime: 1 })
-      .populate({
-        path: 'hostId',
-        select: 'name email phone role',
-        model: 'User'
-      });
-    const rooms = await Promise.all(roomsRaw.map(async room => {
-      const r = room.toObject();
-      const host = r.hostId;
-      const enrollments = await Enrollment.find({ roomId: r._id });
-      const userIds = enrollments.map(e => e.userId);
-      const users = await User.find({ _id: { $in: userIds } }, 'name email phone');
-      return {
-        ...r,
-        hostId: host?._id || r.hostId,
-        host: host ? {
-          _id: host._id,
-          name: host.name,
-          email: host.email,
-        } : null,
-        enrolledUsers: users.map(user => user ? {
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone
-        } : null)
-      };
-    }));
-    res.json({ rooms });
-  } catch (err) {
-    next(err);
-  }
+router.patch('/:id/go-live', auth, authorize('host'), async (req, res) => {
+	try {
+		const { id } = req.params;
+		const { channelName, hostUid } = req.body;
+		const room = await Room.findByIdAndUpdate(
+			id,
+			{
+				status: 'live',
+				channelName,
+				hostUid
+			},
+			{ new: true }
+		);
+		if (!room) return res.status(404).json({ message: 'Room not found' });
+		res.json(room);
+	} catch (err) {
+		res.status(500).json({ message: err.message || 'Failed to go live' });
+	}
 });
-
-// GET /api/rooms/host/:hostId - get all rooms by a specific host
-router.get('/host/:hostId',auth,
-  authorize('host'), async (req, res, next) => {
-    try {
-      const { hostId } = req.params;
-      const roomsRaw = await Room.find({ hostId }).sort({ startTime: 1 })
-        .populate({
-          path: 'hostId',
-          select: 'name email phone role',
-          model: 'User'
-        });
-      const rooms = await Promise.all(roomsRaw.map(async room => {
-        const r = room.toObject();
-        const host = r.hostId;
-        const enrollments = await Enrollment.find({ roomId: r._id });
-        const userIds = enrollments.map(e => e.userId);
-        const users = await User.find({ _id: { $in: userIds } }, 'name email phone');
-        return {
-          ...r,
-          hostId: host?._id || r.hostId,
-          host: host ? {
-            _id: host._id,
-            name: host.name,
-            email: host.email,
-          } : null,
-          enrolledUsers: users.map(user => user ? {
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            phone: user.phone
-          } : null)
-        };
-      }));
-      res.json({ rooms });
-    } catch (err) {
-      next(err);
-    }
-});
-
-// GET /api/rooms
-router.get('/',auth,
-  authorize('host'), async (req, res, next) => {
-    try {
-      const roomsRaw = await Room.find().sort({ startTime: 1 })
-        .populate({
-          path: 'hostId',
-          select: 'name email phone role',
-          model: 'User'
-        });
-      const rooms = await Promise.all(roomsRaw.map(async room => {
-        const r = room.toObject();
-        const host = r.hostId;
-        const enrollments = await Enrollment.find({ roomId: r._id });
-        const userIds = enrollments.map(e => e.userId);
-        const users = await User.find({ _id: { $in: userIds } }, 'name email phone');
-        return {
-          ...r,
-          hostId: host?._id || r.hostId,
-          host: host ? {
-            _id: host._id,
-            name: host.name,
-            email: host.email,
-          } : null,
-          enrolledUsers: users.map(user => user ? {
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            phone: user.phone
-          } : null)
-        };
-      }));
-      res.json({ rooms });
-    } catch (err) {
-      next(err);
-    }
-});
-
-// GET /api/rooms/:id
-router.get('/:id', [param('id').isMongoId()], validate, async (req, res, next) => {
-    try {
-      const room = await Room.findById(req.params.id)
-        .populate({
-          path: 'hostId',
-          select: 'name email phone role',
-          model: 'User'
-        });
-      if (!room) return res.status(404).json({ message: 'Room not found' });
-      const r = room.toObject();
-      const host = r.hostId;
-      const enrollments = await Enrollment.find({ roomId: r._id });
-      const userIds = enrollments.map(e => e.userId);
-      const users = await User.find({ _id: { $in: userIds } }, 'name email phone');
-      res.json({
-        room: {
-          ...r,
-          hostId: host?._id || r.hostId,
-          host: host ? {
-            _id: host._id,
-            name: host.name,
-            email: host.email,
-          } : null,
-          enrolledUsers: users.map(user => user ? {
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            phone: user.phone
-          } : null)
-        }
-      });
-    } catch (err) {
-      next(err);
-    }
-	});
 
 module.exports = router;
+
+
+

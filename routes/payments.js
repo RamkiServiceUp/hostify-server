@@ -93,4 +93,16 @@ router.post(
   }
 );
 
+// GET /api/payments/user/:userId - get all payments for a user
+router.get('/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const Transaction = require('../models/Transaction');
+    const payments = await Transaction.find({ userId }).sort({ createdAt: -1 });
+    res.json({ payments });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Failed to fetch payments' });
+  }
+});
+
 module.exports = router;

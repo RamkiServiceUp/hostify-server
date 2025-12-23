@@ -1,5 +1,28 @@
 const mongoose = require('mongoose');
 
+
+
+const sessionSchema = new mongoose.Schema({
+  roomId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Room',
+    required: true,
+  },
+  title: { type: String, required: true },
+  description: { type: String },
+  startDateTime: { type: Date, required: true },
+  endDateTime: { type: Date, required: true },
+  status: {
+    type: String,
+    enum: ['upcoming', 'live', 'ended'],
+    default: 'upcoming',
+  },
+  channelName: { type: String, required: false },
+  uuid: { type: String, required: false },
+  attendees: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  createdAt: { type: Date, default: Date.now },
+});
+
 const roomSchema = new mongoose.Schema({
   title: {
     type: String,
@@ -13,31 +36,28 @@ const roomSchema = new mongoose.Schema({
     trim: true,
     maxlength: 2000,
   },
+  category: {
+    type: String,
+    trim: true,
+    maxlength: 100,
+    default: 'General',
+  },
   hostId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
     index: true,
   },
+  hostName: {
+    type: String,
+    trim: true,
+    maxlength: 100,
+    default: '',
+  },
   price: {
     type: Number,
     default: 0,
     min: 0,
-  },
-  startTime: {
-    type: Date,
-    required: true,
-    index: true,
-  },
-  endTime: {
-    type: Date,
-    required: true,
-    index: true,
-  },
-  roomDuration: {
-    type: Number, // in minutes
-    required: true,
-    min: 1,
   },
   status: {
     type: String,
@@ -56,17 +76,7 @@ const roomSchema = new mongoose.Schema({
   },
   banner: {
     type: Buffer, // store image as binary (longblob)
-    required: false,
-  },
-  channelName: {
-    type: String,
-    required: false,
-    index: true,
-  },
-  hostUid: {
-    type: Number,
-    required: false,
-    index: true,
+    required: true,
   },
   createdAt: {
     type: Date,
@@ -74,6 +84,22 @@ const roomSchema = new mongoose.Schema({
     immutable: true,
     index: true,
   },
+  sessions: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Session',
+    required: true,
+  }],
+  startDateTime: {
+    type: Date,
+    required: true,
+  },
+  endDateTime: {
+    type: Date,
+    required: true,
+  },
 });
 
-module.exports = mongoose.model('Room', roomSchema);
+const Room = mongoose.model('Room', roomSchema);
+const Session = mongoose.model('Session', sessionSchema);
+
+module.exports = { Room, Session };
