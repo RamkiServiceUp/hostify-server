@@ -1,5 +1,11 @@
-// Start room status cron
+// Start room status cron (legacy, can be removed after migration)
 require('./utils/roomStatusCron');
+// Start Bull-based room status queue for robust scheduling
+try {
+  require('./utils/roomStatusQueue').scheduleSessionJobs();
+} catch (e) {
+  console.warn('Bull queue not started:', e.message);
+}
 require('dotenv').config();
 // Start room status cron
 require('./utils/roomStatusCron');
@@ -12,6 +18,7 @@ var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 
 var indexRouter = require('./routes/index');
+var notificationRouter = require('./routes/notification');
 var usersRouter = require('./routes/users');
 var authRouter = require('./routes/auth');
 var googleRouter = require('./routes/google');
@@ -41,6 +48,7 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/', indexRouter);
+app.use('/api/notifications', notificationRouter);
 app.use('/users', usersRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/google', googleRouter);

@@ -5,7 +5,7 @@ const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
 const validate = require('../middleware/validate');
 const Enrollment = require('../models/Enrollment');
-const Room = require('../models/Room');
+const { Room } = require('../models/Room');
 
 const router = express.Router();
 
