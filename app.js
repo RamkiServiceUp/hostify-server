@@ -30,9 +30,8 @@ var publicRoomsRouter = require('./routes/publicRooms');
 var paymentsRouter = require('./routes/payments');
 var roomsRouter = require('./routes/rooms');
 var userDashboardRouter = require('./routes/userDashboard');
-var agoraRouter = require('./routes/agora');
 var chatroomsRouter = require('./routes/chatrooms');
-
+var agoraRouter = require('./routes/agora');
 var app = express();
 
 // Enable CORS for frontend (allow both Vite and React dev servers)
@@ -59,14 +58,15 @@ app.use('/api/enrollments', enrollmentsRouter);
 app.use('/api/public', publicRoomsRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/rooms', roomsRouter);
-
-
 app.use('/api/agora', agoraRouter);
+
 app.use('/api/chatrooms', chatroomsRouter);
 
 app.use('/api/user', userDashboardRouter);
 
 // MongoDB connection with Mongoose
+
+// Note: agoraSocket (socket.io and token API) is registered in bin/www
 const mongoUri = process.env.MONGO_URI;
 mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log('Connected to MongoDB (Mongoose)'))
