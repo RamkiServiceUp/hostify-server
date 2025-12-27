@@ -19,7 +19,15 @@ const sessionSchema = new mongoose.Schema({
   },
   channelName: { type: String, required: false },
   uuid: { type: String, required: false },
-  attendees: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  attendees: [{
+    id: { type: Number },
+    username: { type: String },
+    role: { type: String, enum: ['host', 'audience'] },
+    isMuted: { type: Boolean },
+    isCameraOn: { type: Boolean },
+    isHandRaised: { type: Boolean },
+    isScreenSharing: { type: Boolean }
+  }],
   createdAt: { type: Date, default: Date.now },
 });
 

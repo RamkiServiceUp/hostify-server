@@ -1,39 +1,39 @@
+
 const express = require('express');
-const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
-require('dotenv').config();
-
 const router = express.Router();
+const { RtcTokenBuilder, RtcRole } = require('agora-token');
 
-const config = require('../config/default');
-const AGORA_APP_ID = config.agora.appId;
-const AGORA_APP_CERTIFICATE = config.agora.certificate;
 
-// POST /api/agora/token
-router.post('/token', (req, res) => {
-  const { channelName, uid, role = 'audience', expireTimeSeconds } = req.body;
-  if (!channelName || !uid) {
-    return res.status(400).json({ error: 'channelName and uid are required' });
+
+router.get('/token', (req, res) => {
+  try {
+    const { channelName, role, uid } = req.query;
+    if (!channelName || !role || !uid) {
+      return res.status(400).json({ message: 'Missing parameters' });
+    }
+    const rtcRole = role === 'publisher' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
+    const expirationTimeInSeconds = 3600;
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+    let token;
+    try {
+      token = RtcTokenBuilder.buildTokenWithUid(
+        process.env.AGORA_APP_ID,
+        process.env.AGORA_APP_CERTIFICATE,
+        channelName,
+        Number(uid),
+        rtcRole,
+        privilegeExpiredTs
+      );
+    } catch (tokenError) {
+      console.error('Error generating token:', tokenError);
+      return res.status(500).json({ message: 'Failed to generate token', error: String(tokenError) });
+    }
+    res.json({ token });
+  } catch (error) {
+    console.error('Token route error:', error);
+    res.status(500).json({ message: 'Failed to generate token', error: String(error) });
   }
-  if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
-    return res.status(500).json({ error: 'Agora appId or certificate not set in server config' });
-  }
-  const agoraRole = role === 'host' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
-  const expire = typeof expireTimeSeconds === 'number' && expireTimeSeconds > 0 ? expireTimeSeconds : 3600;
-  const currentTimestamp = Math.floor(Date.now() / 1000);
-  const privilegeExpireTs = currentTimestamp + expire;
-  const numericUid = Number(uid);
-  if (isNaN(numericUid)) {
-    return res.status(400).json({ error: 'UID must be a number' });
-  }
-  const token = RtcTokenBuilder.buildTokenWithUid(
-    AGORA_APP_ID,
-    AGORA_APP_CERTIFICATE,
-    channelName,
-    numericUid,
-    agoraRole,
-    privilegeExpireTs
-  );
-  res.json({ token });
 });
 
 module.exports = router;

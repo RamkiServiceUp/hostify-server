@@ -5,11 +5,11 @@ const Enrollment = require('../models/Enrollment');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 
-const { emitNotificationToUser, emitRoomNotification } = require('./notificationEmitter');
+const { sendNotificationToUser, sendRoomNotification } = require('./notificationEmitter');
 async function sendNotification(userId, title, message, type = 'session', roomId = null, session = null) {
   const notification = await Notification.create({ userId, title, message, type });
   // Emit real-time notification to user
-  emitNotificationToUser(userId.toString(), {
+  sendNotificationToUser(userId.toString(), {
     _id: notification._id,
     userId,
     title,

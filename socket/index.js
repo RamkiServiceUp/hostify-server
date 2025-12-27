@@ -1,7 +1,5 @@
+const registerAgoraSocket = require('./agoraSocket');
 
-const registerChatSocket = require('./chatSocket');
-const setupNotificationSocket = require('./notificationSocket');
-const registerAttendanceSocket = require('./attendanceSocket');
 
 module.exports = function(server) {
   const { Server } = require('socket.io');
@@ -11,9 +9,6 @@ module.exports = function(server) {
       credentials: true,
     },
   });
-  registerChatSocket(io);
-  registerAttendanceSocket(io);
-  const notificationHelpers = setupNotificationSocket(io);
-  require('../utils/notificationEmitter').setNotificationSocket(notificationHelpers);
+  registerAgoraSocket(io);
   return io;
 };
