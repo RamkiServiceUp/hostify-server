@@ -20,7 +20,7 @@ const sessionSchema = new mongoose.Schema({
   channelName: { type: String, required: false },
   uuid: { type: String, required: false },
   attendees: [{
-    id: { type: Number },
+    id: { type: String },
     username: { type: String },
     role: { type: String, enum: ['host', 'audience'] },
     isMuted: { type: Boolean },
