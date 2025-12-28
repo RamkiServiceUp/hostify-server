@@ -116,6 +116,12 @@ router.post(
         paymentId
       });
 
+      // Add user to enrolledUsers array, prevent duplicates
+      await Room.findByIdAndUpdate(
+        roomId,
+        { $addToSet: { enrolledUsers: userId } }
+      );
+
       room.seatsAvailable -= 1;
       await room.save();
 

@@ -45,6 +45,13 @@ function registerAgoraSocket(io) {
       if (!roomState.sessionAttendees.some(u => u.userId === userId)) {
         const attendee = { ...attendeeObj };
         roomState.sessionAttendees.push(attendee);
+        // Remove duplicates by userId, keep the first occurrence
+        const seen = new Set();
+        roomState.sessionAttendees = roomState.sessionAttendees.filter(att => {
+          if (seen.has(att.userId)) return false;
+          seen.add(att.userId);
+          return true;
+        });
       }
       // Always join the socket to the channel
       socket.join(channelName);
@@ -53,10 +60,21 @@ function registerAgoraSocket(io) {
         const { Session } = require("../models/Room");
         const { default: mongoose } = require("mongoose");
         if (mongoose.Types.ObjectId.isValid(channelName)) {
-          // Only add if not already present (by id)
+          // Fetch the session to get current attendees
+          const session = await Session.findById(channelName);
+          let attendees = Array.isArray(session?.attendees) ? [...session.attendees] : [];
+          // Add the new attendee
+          attendees.push(attendeeObj);
+          // Remove duplicates by userId, keep the first occurrence
+          const seen = new Set();
+          attendees = attendees.filter(att => {
+            if (seen.has(att.userId)) return false;
+            seen.add(att.userId);
+            return true;
+          });
           await Session.findByIdAndUpdate(
             channelName,
-            { $addToSet: { attendees: attendeeObj } },
+            { attendees },
             { new: true }
           );
         } else {
