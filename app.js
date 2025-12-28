@@ -32,6 +32,8 @@ var roomsRouter = require('./routes/rooms');
 var userDashboardRouter = require('./routes/userDashboard');
 var chatroomsRouter = require('./routes/chatrooms');
 var agoraRouter = require('./routes/agora');
+var reportRouter = require('./routes/report');
+var feedbackRouter = require('./routes/feedback');
 var app = express();
 
 // Enable CORS for frontend (allow both Vite and React dev servers)
@@ -58,6 +60,8 @@ app.use('/api/enrollments', enrollmentsRouter);
 app.use('/api/public', publicRoomsRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/rooms', roomsRouter);
+app.use('/api/feedback', feedbackRouter);
+app.use('/api/report', reportRouter);
 app.use('/api/agora', agoraRouter);
 
 app.use('/api/chatrooms', chatroomsRouter);
