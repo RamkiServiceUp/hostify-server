@@ -36,11 +36,11 @@ cron.schedule('* * * * *', async () => {
       const room = await Room.findById(session.roomId);
       if (!room) continue;
       // Notify host
-      await sendNotification(room.hostId, `Session starting soon`, `Session '${session.title}' in room '${room.title}' starts in 15 minutes.`, 'session', room._id, session);
+      await sendNotification(room.hostId, `Session starting soon`, `Session '${session.name}' in room '${room.title}' starts in 15 minutes.`, 'session', room._id, session);
       // Notify enrolled users
       const enrollments = await Enrollment.find({ roomId: room._id });
       for (const enrollment of enrollments) {
-        await sendNotification(enrollment.userId, `Session starting soon`, `Session '${session.title}' in room '${room.title}' starts in 15 minutes.`, 'session', room._id, session);
+        await sendNotification(enrollment.userId, `Session starting soon`, `Session '${session.name}' in room '${room.title}' starts in 15 minutes.`, 'session', room._id, session);
       }
       // Mark session as notified (optional: add a field if needed)
     }
@@ -60,10 +60,10 @@ cron.schedule('* * * * *', async () => {
       await session.save();
       const room = await Room.findById(session.roomId);
       if (room) {
-        await sendNotification(room.hostId, `Session is live`, `Session '${session.title}' in room '${room.title}' is now live.`, 'session', room._id, session);
+        await sendNotification(room.hostId, `Session is live`, `Session '${session.name}' in room '${room.title}' is now live.`, 'session', room._id, session);
         const enrollments = await Enrollment.find({ roomId: room._id });
         for (const enrollment of enrollments) {
-          await sendNotification(enrollment.userId, `Session is live`, `Session '${session.title}' in room '${room.title}' is now live.`, 'session', room._id, session);
+          await sendNotification(enrollment.userId, `Session is live`, `Session '${session.name}' in room '${room.title}' is now live.`, 'session', room._id, session);
         }
       }
     }
@@ -74,10 +74,10 @@ cron.schedule('* * * * *', async () => {
       await session.save();
       const room = await Room.findById(session.roomId);
       if (room) {
-        await sendNotification(room.hostId, `Session ended`, `Session '${session.title}' in room '${room.title}' has ended.`, 'session', room._id, session);
+        await sendNotification(room.hostId, `Session ended`, `Session '${session.name}' in room '${room.title}' has ended.`, 'session', room._id, session);
         const enrollments = await Enrollment.find({ roomId: room._id });
         for (const enrollment of enrollments) {
-          await sendNotification(enrollment.userId, `Session ended`, `Session '${session.title}' in room '${room.title}' has ended.`, 'session', room._id, session);
+          await sendNotification(enrollment.userId, `Session ended`, `Session '${session.name}' in room '${room.title}' has ended.`, 'session', room._id, session);
         }
       }
     }

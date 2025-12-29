@@ -8,7 +8,7 @@ const sessionSchema = new mongoose.Schema({
     ref: 'Room',
     required: true,
   },
-  title: { type: String, required: true },
+  name: { type: String },
   description: { type: String },
   startDateTime: { type: Date, required: true },
   endDateTime: { type: Date, required: true },
@@ -97,6 +97,10 @@ const roomSchema = new mongoose.Schema({
     ref: 'Session',
     required: true,
   }],
+  isPrivate: {
+    type: Boolean,
+    default: false,
+  },
   startDateTime: {
     type: Date,
     required: true,
