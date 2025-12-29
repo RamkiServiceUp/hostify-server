@@ -25,7 +25,7 @@ router.get('/host/:hostId', auth, authorize('host'), async (req, res) => {
 const User = require('../models/User');
 router.post('/', auth, authorize('host'), upload.single('banner'), async (req, res) => {
 	try {
-		const { title, description, category, price, seatsAvailable, sessions, startDateTime, endDateTime, hostId } = req.body;
+		const { title, description, category, price, seatsAvailable, sessions, startDateTime, endDateTime, hostId, isPrivate } = req.body;
 		if (!title || !description || !price || !seatsAvailable || !req.file || !sessions || !hostId) {
 			return res.status(400).json({ message: 'Missing required fields' });
 		}
@@ -57,14 +57,15 @@ router.post('/', auth, authorize('host'), upload.single('banner'), async (req, r
 			startDateTime,
 			endDateTime,
 			sessions: [],
+			isPrivate: isPrivate === 'true' || isPrivate === true,
 		});
 		await room.save();
 		// Create sessions and link to room
 		const sessionDocs = await Promise.all(sessionArr.map(async (s) => {
 			const session = new Session({
 				roomId: room._id,
-				title: room.title,
-				description: room.description,
+				name: s.name || room.title,
+				description: s.description || room.description,
 				startDateTime: new Date(`${s.date}T${s.startTime}`),
 				endDateTime: new Date(`${s.date}T${s.endTime}`),
 			});

@@ -1,3 +1,4 @@
+var calendarRouter = require('./routes/calendar');
 // Start room status cron (legacy, can be removed after migration)
 require('./utils/roomStatusCron');
 // Start Bull-based room status queue for robust scheduling
@@ -34,6 +35,7 @@ var chatroomsRouter = require('./routes/chatrooms');
 var agoraRouter = require('./routes/agora');
 var reportRouter = require('./routes/report');
 var feedbackRouter = require('./routes/feedback');
+var sessionsRouter = require('./routes/sessions');
 var app = express();
 
 // Enable CORS for frontend (allow both Vite and React dev servers)
@@ -61,8 +63,11 @@ app.use('/api/public', publicRoomsRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/rooms', roomsRouter);
 app.use('/api/feedback', feedbackRouter);
+app.use('/api/sessions', sessionsRouter);
 app.use('/api/report', reportRouter);
 app.use('/api/agora', agoraRouter);
+
+app.use('/api/calendar', calendarRouter);
 
 app.use('/api/chatrooms', chatroomsRouter);
 

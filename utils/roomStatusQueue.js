@@ -33,7 +33,7 @@ sessionQueue.process('notify15min', async (job) => {
   const notification = await Notification.create({
     userId: room.hostId,
     title: 'Session starting soon',
-    message: `Session '${session.title}' in room '${room.title}' starts in 15 minutes.`,
+    message: `Session '${session.name || session.title }' in room '${room.name ||room.title}' starts in 15 minutes.`,
     type: 'session',
   });
   emitNotificationToUser(room.hostId.toString(), notification);
@@ -43,7 +43,7 @@ sessionQueue.process('notify15min', async (job) => {
     const userNotification = await Notification.create({
       userId: enrollment.userId,
       title: 'Session starting soon',
-      message: `Session '${session.title}' in room '${room.title}' starts in 15 minutes.`,
+      message: `Session '${session.name || session.title }' in room '${room.name ||room.title}' starts in 15 minutes.`,
       type: 'session',
     });
     emitNotificationToUser(enrollment.userId.toString(), userNotification);
