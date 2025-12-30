@@ -5,7 +5,7 @@ module.exports = function(server) {
   const { Server } = require('socket.io');
   const io = new Server(server, {
     cors: {
-      origin: ['http://localhost:5173', 'http://localhost:3000'],
+      origin: ['https://hostify-server.onrender.com','http://localhost:5173', 'http://localhost:3000'],
       credentials: true,
     },
   });
