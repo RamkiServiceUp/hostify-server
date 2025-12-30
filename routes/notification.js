@@ -15,3 +15,39 @@ router.get('/user/:userId', async (req, res) => {
 });
 
 module.exports = router;
+
+// PATCH /api/notifications/:notificationId/read - mark as read
+router.patch('/:notificationId/read', async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const notification = await Notification.findByIdAndUpdate(
+      notificationId,
+      { read: true },
+      { new: true }
+    );
+    if (!notification) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
+    res.json(notification);
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Failed to mark as read' });
+  }
+});
+
+// PATCH /api/notifications/:notificationId/unread - mark as unread
+router.patch('/:notificationId/unread', async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const notification = await Notification.findByIdAndUpdate(
+      notificationId,
+      { read: false },
+      { new: true }
+    );
+    if (!notification) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
+    res.json(notification);
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Failed to mark as unread' });
+  }
+});

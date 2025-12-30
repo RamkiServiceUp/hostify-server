@@ -80,6 +80,17 @@ router.post('/', auth, authorize('host'), upload.single('banner'), async (req, r
 	}
 });
 
+// GET /api/rooms/active - get all active/live rooms (public)
+router.get('/active', async (req, res) => {
+  try {
+    // Find rooms with status 'live' or 'active'
+    const rooms = await Room.find({ status: { $in: ['live', 'active'] } });
+    res.json({ rooms });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Failed to fetch active rooms' });
+  }
+});
+
 // GET /api/rooms/:roomId - get a room by its ID
 router.get('/:roomId', auth, async (req, res) => {
        try {
@@ -96,18 +107,17 @@ router.get('/:roomId', auth, async (req, res) => {
        }
 });
 
-
 // DELETE /api/rooms/:roomId - delete a room by its ID (host only)
 router.delete('/:roomId', auth, authorize('host'), async (req, res) => {
-	try {
-		const room = await Room.findByIdAndDelete(req.params.roomId);
-		if (!room) return res.status(404).json({ message: 'Room not found' });
-		// Optionally, delete associated sessions
-		await Session.deleteMany({ roomId: req.params.roomId });
-		res.json({ message: 'Room deleted successfully' });
-	} catch (err) {
-		res.status(500).json({ message: err.message || 'Failed to delete room' });
-	}
+       try {
+	       const room = await Room.findByIdAndDelete(req.params.roomId);
+	       if (!room) return res.status(404).json({ message: 'Room not found' });
+	       // Optionally, delete associated sessions
+	       await Session.deleteMany({ roomId: req.params.roomId });
+	       res.json({ message: 'Room deleted successfully' });
+       } catch (err) {
+	       res.status(500).json({ message: err.message || 'Failed to delete room' });
+       }
 });
 
 // GET /api/rooms/not-enrolled - get all rooms the current user is NOT enrolled in
