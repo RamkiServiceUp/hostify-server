@@ -66,8 +66,8 @@ router.post('/', auth, authorize('host'), upload.single('banner'), async (req, r
 				roomId: room._id,
 				name: s.name || room.title,
 				description: s.description || room.description,
-				startDateTime: new Date(`${s.date}T${s.startTime}`),
-				endDateTime: new Date(`${s.date}T${s.endTime}`),
+				startDateTime: s.startTime,
+				endDateTime: s.endTime,
 			});
 			await session.save();
 			return session._id;
