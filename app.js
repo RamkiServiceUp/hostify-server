@@ -40,7 +40,7 @@ var app = express();
 
 // Enable CORS for frontend (allow both Vite and React dev servers)
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  origin: ['https://hostify-server.onrender.com','http://localhost:5173', 'http://localhost:3000'],
   credentials: true
 }));
 
