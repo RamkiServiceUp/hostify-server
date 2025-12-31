@@ -37,6 +37,19 @@ const userSchema = new mongoose.Schema({
     default: 'user',
     index: true,
   },
+  // Aggregated host stats
+  averageRating: {
+    type: Number,
+    default: 0,
+  },
+  feedbackCount: {
+    type: Number,
+    default: 0,
+  },
+  sessionCount: {
+    type: Number,
+    default: 0,
+  },
   refreshToken: {
     type: String,
     select: false,
