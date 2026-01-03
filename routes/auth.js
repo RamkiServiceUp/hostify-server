@@ -79,7 +79,35 @@ router.post(
         return res.status(409).json({ message: 'Phone already registered' });
       }
       const user = await User.create({ name, phone, email, password, role: userType });
-      res.status(201).json({ message: 'User registered', user: { id: user._id, name: user.name, phone: user.phone, email: user.email, userType: user.role } });
+
+      // Issue tokens so the new user is authenticated immediately (for onboarding redirect)
+      const accessToken = jwtUtil.signAccessToken({ id: user._id, email: user.email, role: user.role });
+      const refreshToken = jwtUtil.signRefreshToken({ id: user._id, email: user.email, role: user.role });
+      const csrfToken = csrfUtil.generateCsrfToken();
+
+      // Set cookies (same policy as login)
+      res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: config.nodeEnv === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        domain: config.cookieDomain,
+        path: '/api/auth/refresh',
+      });
+      res.cookie('csrfToken', csrfToken, {
+        httpOnly: false,
+        secure: config.nodeEnv === 'production',
+        sameSite: 'strict',
+        maxAge: 15 * 60 * 1000,
+        domain: config.cookieDomain,
+      });
+
+      res.status(201).json({
+        message: 'User registered',
+        accessToken,
+        csrfToken,
+        user: { id: user._id, name: user.name, phone: user.phone, email: user.email, userType: user.role }
+      });
     } catch (err) {
       if (err.code === 11000 && err.keyPattern && err.keyPattern.phone) {
         return res.status(409).json({ message: 'Phone already registered' });
@@ -104,7 +132,11 @@ router.post(
     try {
       const { email, password, role } = req.body;
       const user = await User.findOne({ email }).select('+password');
-      if (!user || !(await user.comparePassword(password))) {
+
+      // Debug logging: provided vs stored password (remove in production)
+      const passwordOk = user ? await user.comparePassword(password) : false;
+      console.log('Login debug -> provided:', password, 'stored:', user?.password, 'match:', passwordOk);
+      if (!user || !passwordOk) {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
       // If role is provided, ensure it matches the user's role
@@ -141,6 +173,35 @@ router.post(
           userType: user.role
         }
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// POST /api/auth/update-password-by-email
+// NOTE: This endpoint is open and should be protected in production (e.g., admin auth or token-based reset)
+router.post(
+  '/update-password-by-email',
+  [
+    body('email').isEmail().normalizeEmail(),
+    body('newPassword').isLength({ min: 8 }).withMessage('New password must be at least 8 characters'),
+  ],
+  validate,
+  async (req, res, next) => {
+    try {
+      const { email, newPassword } = req.body;
+
+      const user = await User.findOne({ email }).select('+password');
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      // Assign plain new password; pre-save hook will hash it
+      user.password = newPassword;
+      await user.save();
+
+      res.status(200).json({ message: 'Password updated successfully' });
     } catch (err) {
       next(err);
     }
