@@ -155,6 +155,11 @@ router.get('/:roomId', auth, async (req, res) => {
 			       populate: { path: 'attendees', model: 'User', select: 'name email' },
 		       });
 	       if (!room) return res.status(404).json({ message: 'Room not found' });
+	       res.set({
+	       	'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+	       	Pragma: 'no-cache',
+	       	Expires: '0',
+	       });
 	       res.json(room);
        } catch (err) {
 	       res.status(500).json({ message: err.message || 'Failed to fetch room' });
