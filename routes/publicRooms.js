@@ -28,15 +28,15 @@ router.get('/rooms', async (req, res, next) => {
       if (maxPrice !== undefined) query.price.$lte = Number(maxPrice);
     }
     if (startDate || endDate) {
-      query.startTime = {};
-      if (startDate) query.startTime.$gte = new Date(startDate);
-      if (endDate) query.startTime.$lte = new Date(endDate);
+      query.startDateTime = {};
+      if (startDate) query.startDateTime.$gte = new Date(startDate);
+      if (endDate) query.startDateTime.$lte = new Date(endDate);
     }
 
     const skip = (Number(page) - 1) * Number(limit);
     const [rooms, total] = await Promise.all([
       Room.find(query)
-        .sort({ startTime: 1 })
+        .sort({ startDateTime: 1 })
         .skip(skip)
         .limit(Number(limit)),
       Room.countDocuments(query)
@@ -48,6 +48,36 @@ router.get('/rooms', async (req, res, next) => {
       limit: Number(limit),
       total,
       totalPages: Math.ceil(total / limit)
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/public/rooms/:id - public room details (no auth)
+router.get('/rooms/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const room = await Room.findById(id)
+      .select('-banner')
+      .populate({ path: 'sessions', select: 'name startDateTime endDateTime status' })
+      .lean();
+
+    if (!room) return res.status(404).json({ message: 'Room not found' });
+
+    const enrolledCount = Array.isArray(room.enrolledUsers) ? room.enrolledUsers.length : 0;
+    // Prevent intermediate caches from serving stale 304 responses
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    });
+
+    res.json({
+      room: {
+        ...room,
+        enrolledCount,
+      },
     });
   } catch (err) {
     next(err);

@@ -1,6 +1,6 @@
 const express = require('express');
 const Enrollment = require('../models/Enrollment');
-const Room = require('../models/Room');
+const { Room } = require('../models/Room');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
 
@@ -19,9 +19,9 @@ router.get('/dashboard', auth, authorize('user'), async (req, res, next) => {
     const now = new Date();
     const upcomingRooms = await Room.find({
       _id: { $in: roomIds },
-      startTime: { $gte: now }
+      startDateTime: { $gte: now }
     })
-      .sort({ startTime: 1 })
+      .sort({ startDateTime: 1 })
       .limit(7);
     res.json({ upcomingRooms });
   } catch (err) {

@@ -9,8 +9,12 @@ const chatMessageSchema = new mongoose.Schema({
 
 const chatRoomSchema = new mongoose.Schema({
   roomId: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', required: true, index: true },
+  sessionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Session', required: false, index: true },
   roomName: { type: String, required: true },
+  sessionTitle: { type: String },
   messages: [chatMessageSchema],
 });
+
+chatRoomSchema.index({ roomId: 1, sessionId: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('ChatRoom', chatRoomSchema);
