@@ -91,6 +91,60 @@ router.get('/active', async (req, res) => {
   }
 });
 
+// GET /api/rooms/recommended - get recommended rooms based on user interests and activity
+const Onboarding = require('../models/Onboarding');
+const Enrollment = require('../models/Enrollment');
+router.get('/recommended', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Get user onboarding data to find interests
+    const onboarding = await Onboarding.findOne({ userId, role: 'user' });
+    
+    // Get ALL user enrollments to exclude from recommendations
+    const allEnrollments = await Enrollment.find({ userId }).select('roomId');
+    const enrolledRoomIds = allEnrollments.map(e => e.roomId).filter(Boolean);
+    
+    // Get recent enrollments with room details to understand preferences
+    const recentEnrollments = await Enrollment.find({ userId })
+      .populate('roomId')
+      .sort({ createdAt: -1 })
+      .limit(10);
+    
+    // Extract categories from enrolled rooms for preference matching
+    const enrolledCategories = recentEnrollments
+      .map(e => e.roomId?.category)
+      .filter(Boolean);
+    
+    // Build recommendation query
+    let query = { 
+      status: { $in: ['upcoming', 'live'] },
+      isPrivate: { $ne: true },
+      // Exclude ALL enrolled rooms
+      _id: { $nin: enrolledRoomIds }
+    };
+    
+    // Match based on user interests or enrolled categories
+    const interests = onboarding?.interests || [];
+    if (interests.length > 0 || enrolledCategories.length > 0) {
+      const matchTerms = [...interests, ...enrolledCategories];
+      query.$or = [
+        { category: { $in: matchTerms } },
+        { title: { $regex: matchTerms.join('|'), $options: 'i' } },
+        { description: { $regex: matchTerms.join('|'), $options: 'i' } }
+      ];
+    }
+    
+    const recommendedRooms = await Room.find(query)
+      .sort({ createdAt: -1 })
+      .limit(6);
+    
+    res.json({ rooms: recommendedRooms });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Failed to fetch recommended rooms' });
+  }
+});
+
 // GET /api/rooms/:roomId - get a room by its ID
 router.get('/:roomId', auth, async (req, res) => {
        try {

@@ -36,6 +36,8 @@ var agoraRouter = require('./routes/agora');
 var reportRouter = require('./routes/report');
 var feedbackRouter = require('./routes/feedback');
 var sessionsRouter = require('./routes/sessions');
+var onboardingRouter = require('./routes/onboarding');
+var payoutsRouter = require('./routes/payouts');
 var app = express();
 
 // Enable CORS for frontend (allow both Vite and React dev servers)
@@ -77,6 +79,10 @@ app.use('/api/calendar', calendarRouter);
 app.use('/api/chatrooms', chatroomsRouter);
 
 app.use('/api/user', userDashboardRouter);
+
+app.use('/api/onboarding', onboardingRouter);
+
+app.use('/api/payouts', payoutsRouter);
 
 // MongoDB connection with Mongoose
 
