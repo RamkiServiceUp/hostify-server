@@ -101,16 +101,49 @@ function registerAgoraSocket(io) {
       io.to(channelName).emit("userList", room.users);
       io.to(channelName).emit("meetingStatus", { status: room.status });
 
+      // Load and send previous chat messages to the newly joined user
+      try {
+        const ChatRoom = require("../models/ChatRoom");
+        const { default: mongoose } = require("mongoose");
+        const { Session } = require("../models/Room");
+        
+        if (mongoose.Types.ObjectId.isValid(channelName)) {
+          const session = await Session.findById(channelName).populate('roomId');
+          if (session) {
+            const roomId = session.roomId?._id || session.roomId;
+            const chatRoom = await ChatRoom.findOne({ 
+              roomId: roomId, 
+              sessionId: channelName 
+            });
+            
+            if (chatRoom && chatRoom.messages && chatRoom.messages.length > 0) {
+              // Convert DB messages to socket message format
+              const previousMessages = chatRoom.messages.map(msg => ({
+                id: msg._id.toString(),
+                senderId: msg.userId.toString(),
+                senderName: msg.userName,
+                senderRole: 'participant', // Default role
+                text: msg.message,
+                timestamp: new Date(msg.createdAt).getTime()
+              }));
+              
+              // Send previous messages to the newly joined user
+              socket.emit("chatHistory", previousMessages);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[agoraSocket] Failed to load chat history:', err);
+      }
+
       // If someone is already sharing, inform the new joiner so UI reflects it
       if (room.screenShareUserId) {
         const sharer = room.users.find(u => String(u.id) === String(room.screenShareUserId));
-        console.log('[agoraSocket] New joiner detected. Sending screenShareStart to new user:', participantId, 'sharer:', room.screenShareUserId);
         socket.emit("screenShareStart", {
           userId: room.screenShareUserId,
           username: sharer?.username || "Screen Sharer",
         });
       } else {
-        console.log('[agoraSocket] New joiner detected. No active screen share.');
       }
     });
 
@@ -151,8 +184,8 @@ function registerAgoraSocket(io) {
       });
     });
 
-    // Handle Chat
-    socket.on("chatMessage", (text) => {
+    // Handle Chat - Store in MongoDB and broadcast
+    socket.on("chatMessage", async (text) => {
       const room = [...rooms.values()].find(r => r.users.some(u => u.socketId === socket.id));
       if (!room) return;
       const user = room.users.find(u => u.socketId === socket.id);
@@ -166,6 +199,47 @@ function registerAgoraSocket(io) {
         text,
         timestamp: Date.now()
       };
+
+      // Store message in MongoDB
+      try {
+        const ChatRoom = require("../models/ChatRoom");
+        const { default: mongoose } = require("mongoose");
+        const { Session } = require("../models/Room");
+        
+        const sessionId = user.channelName;
+        if (mongoose.Types.ObjectId.isValid(sessionId)) {
+          const session = await Session.findById(sessionId).populate('roomId');
+          if (session) {
+            const roomId = session.roomId?._id || session.roomId;
+            
+            let chatRoom = await ChatRoom.findOne({ 
+              roomId: roomId, 
+              sessionId: sessionId 
+            });
+            
+            if (!chatRoom) {
+              chatRoom = new ChatRoom({
+                roomId: roomId,
+                sessionId: sessionId,
+                roomName: session.roomId?.title || 'Live Session',
+                sessionTitle: session.title || session.name,
+                messages: []
+              });
+            }
+            
+            chatRoom.messages.push({
+              userId: user.userId,
+              userName: user.username,
+              message: text,
+              createdAt: new Date(message.timestamp)
+            });
+            
+            await chatRoom.save();
+          }
+        }
+      } catch (err) {
+        console.error('[agoraSocket] Failed to save chat message to DB:', err);
+      }
 
       // Broadcast to all users in the same channel, including sender
       io.to(user.channelName).emit("chatMessage", message);
@@ -198,14 +272,12 @@ function registerAgoraSocket(io) {
         const previousSharer = room.users.find(u => String(u.id) === String(room.screenShareUserId));
         if (previousSharer) {
           previousSharer.isScreenSharing = false;
-          console.log('[agoraSocket] Stopping previous screen share from:', room.screenShareUserId);
           io.to(user.channelName).emit("screenShareStop", { userId: room.screenShareUserId });
         }
       }
       
       room.screenShareUserId = sharerUserId || user.id;
       user.isScreenSharing = true;
-      console.log('[agoraSocket] screenShareStart - Room:', user.channelName, 'Sharer:', room.screenShareUserId, 'Username:', username || user.username);
       io.to(user.channelName).emit("screenShareStart", { 
         userId: room.screenShareUserId, 
         username: username || user.username 
@@ -219,7 +291,6 @@ function registerAgoraSocket(io) {
       const user = room.users.find(u => u.socketId === socket.id);
       if (!user) return;
       
-      console.log('[agoraSocket] screenShareStop - Room:', user.channelName, 'Sharer:', room.screenShareUserId);
       room.screenShareUserId = null;
       user.isScreenSharing = false;
       io.to(user.channelName).emit("screenShareStop", { userId: sharerUserId || user.id });
@@ -231,7 +302,6 @@ function registerAgoraSocket(io) {
       const room = getRoom(channelName);
       if (!room) return;
       
-      console.log('[agoraSocket] requestRoomState for channel:', channelName, 'screenShareUserId:', room.screenShareUserId);
       
       if (room.screenShareUserId) {
         const sharer = room.users.find(u => String(u.id) === String(room.screenShareUserId));

@@ -135,7 +135,6 @@ router.post(
 
       // Debug logging: provided vs stored password (remove in production)
       const passwordOk = user ? await user.comparePassword(password) : false;
-      console.log('Login debug -> provided:', password, 'stored:', user?.password, 'match:', passwordOk);
       if (!user || !passwordOk) {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
